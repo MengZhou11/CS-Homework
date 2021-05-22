@@ -6,10 +6,11 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.*;
+import java.util.ArrayList;
 
-public class Server {
+public class Server extends Thread{
     ServerSocket serverSocket;
-    String saveString[];
+    String[] saveString;
     private Connection conn;   //to connect database file
     private final String dbTableName = "Minesweeper";
     private final String col1 = "allCellList";
@@ -17,12 +18,12 @@ public class Server {
     private final String col3 = "mineLeftBar";
     private static int id;
     private final int NUM_COLS = 4;
-    private String[] topScores = new String[5];
+    private String topInfo = "";
 
     public Server() {
         //connect to its database file
         try {
-            conn = DriverManager.getConnection("jdbc:sqlite:/Users/mengzhou/Desktop/Java/Minesweeper.db"); //如果这个位置没有db文件就会自动建立一个
+            conn = DriverManager.getConnection("jdbc:sqlite:Minesweeper.db"); //如果这个位置没有db文件就会自动建立一个
 
             //create a db file if not exits. for first time.
             String strQuery2 = "CREATE TABLE IF NOT EXISTS "+dbTableName +" ("+col1+" TEXT, "+col2 +" TEXT, "+ col3 +" TEXT, ID INT, UNIQUE (ID)) ";  //总共有4列
@@ -35,7 +36,6 @@ public class Server {
             ResultSetMetaData rsm = rs.getMetaData();
             int numColumns = rsm.getColumnCount();
             while (rs.next()) {
-
                 String rowString = "";
                 for (int i = 1; i <= numColumns; i++) {
                     Object o = rs.getObject(i);
@@ -50,7 +50,9 @@ public class Server {
         }
 
     }
-        public void run(){
+
+    @Override
+    public void run(){
         try {
             serverSocket = new ServerSocket(8000);
 
@@ -64,10 +66,11 @@ public class Server {
                 if(mess.equals("SAVE")){
                     System.out.println("saving game....");
                     saveString = (String []) ois.readObject();  //read the next input stream
-                    save(saveString);   //save the string[] to database
+                    save(saveString);
+                    //save the string[] to database
                     oos.write(1);    //save request has been complete
                     oos.write(id);
-                    System.out.println("\n Saved! ");
+                    System.out.println("Saved!");
                 }
                 if(mess.equals("LOAD")){
                     System.out.println("loading game....");
@@ -79,13 +82,20 @@ public class Server {
                  //   oos.write(2);   //load request has been complete
                     System.out.println("Loaded! ");
                 }
+                if(mess.equals("TOP")){
+                    System.out.println("loading top scores....");
+                    findTop();
+                    System.out.println(topInfo);
+                    oos.writeObject(topInfo);
+                    System.out.println("Top score has been sent! ");
+                }
 
                 oos.close();
                 ois.close();
                 socket.close();
             }
 
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException  e) {
             e.printStackTrace();
         }
     }
@@ -147,9 +157,48 @@ public class Server {
     }
 
 
+    //only when somebody won can be selected on the top score
+    public void findTop(){
+        String strQuery3 = "SELECT * FROM Minesweeper WHERE mineLeftBar!='Lost' ORDER BY mineLeftBar, stoppedTimer DESC";
+        Statement statement = null;
+
+        try {
+            statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery(strQuery3);
+            ResultSetMetaData rsm = rs.getMetaData();
+            int numColumns = rsm.getColumnCount();
+            ArrayList<Integer> arr = new ArrayList<>();
+            int count=0;
+            topInfo="";
+            while (rs.next() &&count<5) {
+                for (int i = 2; i <= numColumns; i++) {
+                    if(i==2){
+                        int o = 1000-rs.getInt(i);
+                        topInfo += "Time used: " + o;
+                    }
+                    if(i==3){
+                        Object o = rs.getObject(i);
+                        topInfo += " Mine left: " + o.toString();
+                    }
+                    if(i==4){
+                        Object o = rs.getObject(i);
+                        topInfo += " ID: " + o.toString();
+                    }
+                }
+                topInfo+="\n";
+                count++;
+            }
+
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+
+    }
+
+
     //main is here
     public static void main(String[] args) {
         Server server = new Server();
-        server.run();
+        server.start();
     }
 }

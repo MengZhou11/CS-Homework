@@ -4,21 +4,22 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.*;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 
 public class MinesweeperGame extends JFrame{
-    private final JPanel timeLeftPanel; //timer panel
     private final int timeLeft = 1000; //游戏总共1000s
     private final JLabel timeLeftLabel; //timer bar
     private final JLabel mineStatus; //左下角的
     private int savedID;
     private int maxLoadingID;
+    private String topInfo="No top scores yet.. ";
 
-    MinesweeperHelper mineSweeperGameBoard;  //gameBoard
+    MinesweeperBoard mineSweeperGameBoard;  //gameBoard
     Socket socket = null;  //when use save and load
-
 
     public MinesweeperGame() {
         //set up menu bar, timeLeft, and mine counting info.
@@ -26,7 +27,8 @@ public class MinesweeperGame extends JFrame{
         createMenus();
 
         //timer bar
-        timeLeftPanel = new JPanel();
+        //timer panel
+        JPanel timeLeftPanel = new JPanel();
         timeLeftLabel = new JLabel("Time Remaining: " + timeLeft);
         timeLeftPanel.add(timeLeftLabel);
         add(timeLeftPanel, BorderLayout.NORTH);
@@ -34,10 +36,8 @@ public class MinesweeperGame extends JFrame{
         //add center component and mine status bar
         mineStatus = new JLabel("");
         add(mineStatus, BorderLayout.SOUTH);
-        mineSweeperGameBoard = new MinesweeperHelper(mineStatus, timeLeftLabel);
+        mineSweeperGameBoard = new MinesweeperBoard(mineStatus, timeLeftLabel);
         add(mineSweeperGameBoard, BorderLayout.CENTER);
-
-
 
         //for the whole game board, location in screen, resizeable and default operation
         setResizable(false);
@@ -75,7 +75,7 @@ public class MinesweeperGame extends JFrame{
                 mineSweeperGameBoard.stopGame();
                 remove(mineSweeperGameBoard);
                 //create new game and add it to this frame
-                mineSweeperGameBoard = new MinesweeperHelper(mineStatus , timeLeftLabel);
+                mineSweeperGameBoard = new MinesweeperBoard(mineStatus , timeLeftLabel);
                 add(mineSweeperGameBoard, BorderLayout.CENTER);
                 timeLeftLabel.setText("Time Remaining: "+ timeLeft);
             }
@@ -88,9 +88,8 @@ public class MinesweeperGame extends JFrame{
         item.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if(!LoadBoard()){
-                    JOptionPane.showMessageDialog(null, "Failed loading game...MAX GAME ID: "+maxLoadingID,"Loading game",JOptionPane.WARNING_MESSAGE);
-                }
+                int val = Integer.parseInt(JOptionPane.showInputDialog("Enter id of the game that you want to load: "));
+                LoadBoard(val);
             }
         });
         return item;
@@ -115,9 +114,10 @@ public class MinesweeperGame extends JFrame{
         JMenuItem item = new JMenuItem("Top Scores");
         class exitListener implements ActionListener {
             public void actionPerformed(ActionEvent event) {
-                String str="";
                 //needed to be done
-                JOptionPane.showMessageDialog(null, str,"5 High Scores",JOptionPane.WARNING_MESSAGE);
+                showTop();
+                int val = Integer.parseInt(JOptionPane.showInputDialog(topInfo+"Enter id of the game to load: "));
+                LoadBoard(val);
             }
         }
         item.addActionListener(new exitListener());
@@ -137,7 +137,7 @@ public class MinesweeperGame extends JFrame{
     }
 
 
-    public boolean LoadBoard() {
+    public void LoadBoard(int val) {
         String str ="";
         String  stoppedTime="", mineLeftBar="";
         String [] whole = new String[16*16+2];
@@ -146,21 +146,17 @@ public class MinesweeperGame extends JFrame{
             socket = new Socket(InetAddress.getLocalHost(), 8000);
             ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
             ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-            System.out.println("\n Sending request to Socket Server to load a game");
+            System.out.println("\nSending request to Socket Server to load a game");
             oos.writeObject("LOAD");
-            int val = Integer.parseInt(JOptionPane.showInputDialog("Enter id of the game that you want to load: "));
             maxLoadingID = Integer.parseInt(String.valueOf(ois.readObject()));
             if(val>maxLoadingID){
-                return false;
+                JOptionPane.showMessageDialog(null, "Failed loading game...MAX GAME ID: "+maxLoadingID,"Loading game",JOptionPane.WARNING_MESSAGE);
             }
 
             oos.writeObject(val);  //到这里没有问题
             System.out.println(val);
             str = (String) ois.readObject();
             whole = str.split(" ");
-//            for(String i: whole){
-//                System.out.print(i+" ");
-//            }
             stoppedTime = whole[16*16];
             mineLeftBar = whole[16*16+1];
 
@@ -179,10 +175,9 @@ public class MinesweeperGame extends JFrame{
                 mineSweeperGameBoard.cellList[i] = Integer.parseInt(whole[i]);
             }
             repaint();
-            return true;
 
-        } catch (IOException | ClassNotFoundException e) {
-            return false;
+        } catch (IOException | ClassNotFoundException  e) {
+            e.printStackTrace();
         }
     }
 
@@ -223,7 +218,7 @@ public class MinesweeperGame extends JFrame{
             oos.close();
             ois.close();
             socket.close();
-        } catch (IOException  e) {
+        } catch (IOException e) {
             e.printStackTrace();
             return false;
         }
@@ -235,12 +230,33 @@ public class MinesweeperGame extends JFrame{
         mineSweeperGameBoard.stopGame();
         remove(mineSweeperGameBoard);
         //create new game and add it to this frame
-        mineSweeperGameBoard = new MinesweeperHelper(mineStatus, timeLeftLabel);
+        mineSweeperGameBoard = new MinesweeperBoard(mineStatus, timeLeftLabel);
         add(mineSweeperGameBoard, BorderLayout.CENTER);
         timeLeftLabel.setText("Time Remaining: "+ timeLeft);
         return true;
     }
 
+    public void showTop(){
+        try {
+            socket = new Socket(InetAddress.getLocalHost(), 8000);
+            ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+            ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+            System.out.println("Sending request to Socket Server");
+            oos.writeObject("TOP");
+            Object val = ois.readObject();
+            topInfo =val.toString();
+            if(topInfo.equals("")){
+                topInfo="No top scores to display yet...\n";
+            }
+
+            System.out.println(topInfo);
+            oos.close();
+            ois.close();
+            socket.close();
+        } catch (IOException |ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
 
 
     //main is here
@@ -248,5 +264,6 @@ public class MinesweeperGame extends JFrame{
         MinesweeperGame minesweeper = new MinesweeperGame();
         minesweeper.setVisible(true);
     }
+
 
 }
